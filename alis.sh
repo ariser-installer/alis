@@ -67,6 +67,7 @@ function sanitize_variables() {
     BOOTLOADER=$(sanitize_variable "$BOOTLOADER")
     CUSTOM_SHELL=$(sanitize_variable "$CUSTOM_SHELL")
     DESKTOP_ENVIRONMENT=$(sanitize_variable "$DESKTOP_ENVIRONMENT")
+    DISPLAY_MANAGER=$(sanitize_variable "$DISPLAY_MANAGER")
     SYSTEMD_UNITS=$(sanitize_variable "$SYSTEMD_UNITS")
 
     for I in "${BTRFS_SUBVOLUMES_MOUNTPOINTS[@]}"; do
@@ -192,6 +193,7 @@ function check_variables() {
     check_variables_list "BOOTLOADER" "$BOOTLOADER" "auto grub refind systemd" "true" "true"
     check_variables_list "CUSTOM_SHELL" "$CUSTOM_SHELL" "bash zsh dash fish" "true" "true"
     check_variables_list "DESKTOP_ENVIRONMENT" "$DESKTOP_ENVIRONMENT" "gnome kde xfce mate cinnamon lxde i3-wm i3-gaps deepin budgie bspwm awesome qtile openbox leftwm dusk" "false" "true"
+    check_variables_list "DISPLAY_MANAGER" "$DISPLAY_MANAGER" "auto gdm sddm lightdm lxdm" "true" "true"
     check_variables_boolean "PACKAGES_MULTILIB" "$PACKAGES_MULTILIB"
     check_variables_boolean "PACKAGES_INSTALL" "$PACKAGES_INSTALL"
     check_variables_boolean "PROVISION" "$PROVISION"
@@ -315,7 +317,9 @@ function prepare() {
 
 function configure_reflector() {
     if [ "$REFLECTOR" == "false" ]; then
-        systemctl stop reflector.service
+        if systemctl is-active --quiet reflector.service; then
+            systemctl stop reflector.service
+        fi
     fi
 }
 
@@ -325,13 +329,13 @@ function configure_time() {
 
 function prepare_partition() {
     set +e
-    mountpoint -q /mnt/boot
+    mountpoint -q ${MNT_DIR}/boot
     if [ $? == 0 ]; then
-        umount /mnt/boot
+        umount ${MNT_DIR}/boot
     fi
-    mountpoint -q /mnt
+    mountpoint -q ${MNT_DIR}
     if [ $? == 0 ]; then
-        umount /mnt
+        umount ${MNT_DIR}
     fi
     lvs $LVM_VOLUME_GROUP-$LVM_VOLUME_LOGICAL
     if [ $? == 0 ]; then
@@ -557,15 +561,15 @@ function partition() {
     # create
     if [ "$FILE_SYSTEM_TYPE" == "btrfs" ]; then
         # create subvolumes
-        mount -o "$PARTITION_OPTIONS" "$DEVICE_ROOT" /mnt
+        mount -o "$PARTITION_OPTIONS" "$DEVICE_ROOT" ${MNT_DIR}
         for I in "${BTRFS_SUBVOLUMES_MOUNTPOINTS[@]}"; do
             IFS=',' SUBVOLUME=($I)
             if [ ${SUBVOLUME[0]} == "swap" -a -z "$SWAP_SIZE" ]; then
                 continue
             fi
-            btrfs subvolume create "/mnt/${SUBVOLUME[1]}"
+            btrfs subvolume create "${MNT_DIR}/${SUBVOLUME[1]}"
         done
-        umount /mnt
+        umount ${MNT_DIR}
     fi
 
     # mount
@@ -574,15 +578,15 @@ function partition() {
     # swap
     if [ -n "$SWAP_SIZE" ]; then
         if [ "$FILE_SYSTEM_TYPE" == "btrfs" ]; then
-            SWAPFILE="${BTRFS_SUBVOLUME_SWAP[2]}$SWAPFILE"
-            truncate -s 0 /mnt$SWAPFILE
-            chattr +C /mnt$SWAPFILE
-            btrfs property set /mnt$SWAPFILE compression none
+            SWAPFILE="${BTRFS_SUBVOLUME_SWAP[2]}${SWAPFILE}"
+            truncate -s 0 ${MNT_DIR}${SWAPFILE}
+            chattr +C ${MNT_DIR}${SWAPFILE}
+            btrfs property set ${MNT_DIR}${SWAPFILE} compression none
         fi
 
-        dd if=/dev/zero of=/mnt$SWAPFILE bs=1M count=$SWAP_SIZE status=progress
-        chmod 600 /mnt$SWAPFILE
-        mkswap /mnt$SWAPFILE
+        dd if=/dev/zero of=${MNT_DIR}${SWAPFILE} bs=1M count=$SWAP_SIZE status=progress
+        chmod 600 ${MNT_DIR}${SWAPFILE}
+        mkswap ${MNT_DIR}${SWAPFILE}
     fi
 
     # set variables
@@ -635,18 +639,18 @@ function install() {
         local PACKAGES+=("reiserfsprogs")
     fi
 
-    pacstrap /mnt base base-devel linux linux-firmware "${PACKAGES[@]}"
+    pacstrap ${MNT_DIR} base base-devel linux linux-firmware "${PACKAGES[@]}"
 
-    sed -i 's/#Color/Color/' /mnt/etc/pacman.conf
+    sed -i 's/#Color/Color/' ${MNT_DIR}/etc/pacman.conf
     if [ "$PACMAN_PARALLEL_DOWNLOADS" == "true" ]; then
-        sed -i 's/#ParallelDownloads/ParallelDownloads/' /mnt/etc/pacman.conf
+        sed -i 's/#ParallelDownloads/ParallelDownloads/' ${MNT_DIR}/etc/pacman.conf
     else
-        sed -i 's/#ParallelDownloads\(.*\)/#ParallelDownloads\1\nDisableDownloadTimeout/' /mnt/etc/pacman.conf
+        sed -i 's/#ParallelDownloads\(.*\)/#ParallelDownloads\1\nDisableDownloadTimeout/' ${MNT_DIR}/etc/pacman.conf
     fi
 
     if [ "$REFLECTOR" == "true" ]; then
         pacman_install "reflector"
-        cat <<EOT > /mnt/etc/xdg/reflector/reflector.conf
+        cat <<EOT > ${MNT_DIR}/etc/xdg/reflector/reflector.conf
 ${COUNTRIES[@]}
 --latest 25
 --age 24
@@ -655,49 +659,49 @@ ${COUNTRIES[@]}
 --sort rate
 --save /etc/pacman.d/mirrorlist
 EOT
-        arch-chroot /mnt reflector "${COUNTRIES[@]}" --latest 25 --age 24 --protocol https --completion-percent 100 --sort rate --save /etc/pacman.d/mirrorlist
-        arch-chroot /mnt systemctl enable reflector.timer
+        arch-chroot ${MNT_DIR} reflector "${COUNTRIES[@]}" --latest 25 --age 24 --protocol https --completion-percent 100 --sort rate --save /etc/pacman.d/mirrorlist
+        arch-chroot ${MNT_DIR} systemctl enable reflector.timer
     fi
 
     if [ "$PACKAGES_MULTILIB" == "true" ]; then
-        sed -z -i 's/#\[multilib\]\n#/[multilib]\n/' /mnt/etc/pacman.conf
+        sed -z -i 's/#\[multilib\]\n#/[multilib]\n/' ${MNT_DIR}/etc/pacman.conf
     fi
 }
 
 function configuration() {
     print_step "configuration()"
 
-    genfstab -U /mnt >> /mnt/etc/fstab
+    genfstab -U ${MNT_DIR} >> ${MNT_DIR}/etc/fstab
 
     if [ -n "$SWAP_SIZE" ]; then
-        echo "# swap" >> /mnt/etc/fstab
-        echo "$SWAPFILE none swap defaults 0 0" >> /mnt/etc/fstab
-        echo "" >> /mnt/etc/fstab
+        echo "# swap" >> ${MNT_DIR}/etc/fstab
+        echo "${SWAPFILE} none swap defaults 0 0" >> ${MNT_DIR}/etc/fstab
+        echo "" >> ${MNT_DIR}/etc/fstab
     fi
 
     if [ "$DEVICE_TRIM" == "true" ]; then
         if [ "$FILE_SYSTEM_TYPE" == "f2fs" ]; then
-            sed -i 's/relatime/noatime,nodiscard/' /mnt/etc/fstab
+            sed -i 's/relatime/noatime,nodiscard/' ${MNT_DIR}/etc/fstab
         else
-            sed -i 's/relatime/noatime/' /mnt/etc/fstab
+            sed -i 's/relatime/noatime/' ${MNT_DIR}/etc/fstab
         fi
-        arch-chroot /mnt systemctl enable fstrim.timer
+        arch-chroot ${MNT_DIR} systemctl enable fstrim.timer
     fi
 
-    arch-chroot /mnt ln -s -f $TIMEZONE /etc/localtime
-    arch-chroot /mnt hwclock --systohc
+    arch-chroot ${MNT_DIR} ln -s -f $TIMEZONE /etc/localtime
+    arch-chroot ${MNT_DIR} hwclock --systohc
     for LOCALE in "${LOCALES[@]}"; do
         sed -i "s/#$LOCALE/$LOCALE/" /etc/locale.gen
-        sed -i "s/#$LOCALE/$LOCALE/" /mnt/etc/locale.gen
+        sed -i "s/#$LOCALE/$LOCALE/" ${MNT_DIR}/etc/locale.gen
     done
     for VARIABLE in "${LOCALE_CONF[@]}"; do
         #localectl set-locale "$VARIABLE"
-        echo -e "$VARIABLE" >> /mnt/etc/locale.conf
+        echo -e "$VARIABLE" >> ${MNT_DIR}/etc/locale.conf
     done
     locale-gen
-    arch-chroot /mnt locale-gen
-    echo -e "$KEYMAP\n$FONT\n$FONT_MAP" > /mnt/etc/vconsole.conf
-    echo $HOSTNAME > /mnt/etc/hostname
+    arch-chroot ${MNT_DIR} locale-gen
+    echo -e "$KEYMAP\n$FONT\n$FONT_MAP" > ${MNT_DIR}/etc/vconsole.conf
+    echo $HOSTNAME > ${MNT_DIR}/etc/hostname
 
     local OPTIONS=""
     if [ -n "$KEYLAYOUT" ]; then
@@ -713,8 +717,8 @@ function configuration() {
         local OPTIONS="$OPTIONS"$'\n'"    Option \"XkbOptions\" \"$KEYOPTIONS\""
     fi
 
-    arch-chroot /mnt mkdir -p "/etc/X11/xorg.conf.d/"
-    cat <<EOT > /mnt/etc/X11/xorg.conf.d/00-keyboard.conf
+    arch-chroot ${MNT_DIR} mkdir -p "/etc/X11/xorg.conf.d/"
+    cat <<EOT > ${MNT_DIR}/etc/X11/xorg.conf.d/00-keyboard.conf
 # Written by systemd-localed(8), read by systemd-localed and Xorg. It's
 # probably wise not to edit this file manually. Use localectl(1) to
 # instruct systemd-localed to update it.
@@ -726,10 +730,10 @@ EndSection
 EOT
 
     if [ -n "$SWAP_SIZE" ]; then
-        echo "vm.swappiness=10" > /mnt/etc/sysctl.d/99-sysctl.conf
+        echo "vm.swappiness=10" > ${MNT_DIR}/etc/sysctl.d/99-sysctl.conf
     fi
 
-    printf "$ROOT_PASSWORD\n$ROOT_PASSWORD" | arch-chroot /mnt passwd
+    printf "$ROOT_PASSWORD\n$ROOT_PASSWORD" | arch-chroot ${MNT_DIR} passwd
 }
 
 function mkinitcpio_configuration() {
@@ -765,7 +769,7 @@ function mkinitcpio_configuration() {
             local OPTIONS="$OPTIONS enable_fbc=1"
         fi
         if [ -n "$OPTIONS" ]; then
-            echo "options i915 $OPTIONS" > /mnt/etc/modprobe.d/i915.conf
+            echo "options i915 $OPTIONS" > ${MNT_DIR}/etc/modprobe.d/i915.conf
         fi
     fi
 
@@ -790,11 +794,11 @@ function mkinitcpio_configuration() {
 
     HOOKS=$(sanitize_variable "$HOOKS")
     MODULES=$(sanitize_variable "$MODULES")
-    arch-chroot /mnt sed -i "s/^HOOKS=(.*)$/HOOKS=($HOOKS)/" /etc/mkinitcpio.conf
-    arch-chroot /mnt sed -i "s/^MODULES=(.*)/MODULES=($MODULES)/" /etc/mkinitcpio.conf
+    arch-chroot ${MNT_DIR} sed -i "s/^HOOKS=(.*)$/HOOKS=($HOOKS)/" /etc/mkinitcpio.conf
+    arch-chroot ${MNT_DIR} sed -i "s/^MODULES=(.*)/MODULES=($MODULES)/" /etc/mkinitcpio.conf
 
     if [ "$KERNELS_COMPRESSION" != "" ]; then
-        arch-chroot /mnt sed -i 's/^#COMPRESSION="'"$KERNELS_COMPRESSION"'"/COMPRESSION="'"$KERNELS_COMPRESSION"'"/' /etc/mkinitcpio.conf
+        arch-chroot ${MNT_DIR} sed -i 's/^#COMPRESSION="'"$KERNELS_COMPRESSION"'"/COMPRESSION="'"$KERNELS_COMPRESSION"'"/' /etc/mkinitcpio.conf
     fi
 
     if [ "$KERNELS_COMPRESSION" == "bzip2" ]; then
@@ -827,14 +831,14 @@ function users() {
         create_user "$USER" "$PASSWORD" "$USERS_GROUPS"
     done
 
-    arch-chroot /mnt sed -i 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+    arch-chroot ${MNT_DIR} sed -i 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
     pacman_install "xdg-user-dirs"
 
     if [ "$SYSTEMD_HOMED" == "true" ]; then
-        arch-chroot /mnt systemctl enable systemd-homed.service
+        arch-chroot ${MNT_DIR} systemctl enable systemd-homed.service
 
-        cat <<EOT > "/mnt/etc/pam.d/nss-auth"
+        cat <<EOT > "${MNT_DIR}/etc/pam.d/nss-auth"
 #%PAM-1.0
 
 auth     sufficient pam_unix.so try_first_pass nullok
@@ -850,7 +854,7 @@ password sufficient pam_systemd_home.so
 password required   pam_deny.so
 EOT
 
-        cat <<EOT > "/mnt/etc/pam.d/system-auth"
+        cat <<EOT > "${MNT_DIR}/etc/pam.d/system-auth"
 #%PAM-1.0
 
 auth      substack   nss-auth
@@ -888,7 +892,7 @@ function create_user_homectl() {
     local PASSWORD=$2
     local USER_GROUPS=$3
     local STORAGE="--storage=directory"
-    local IMAGE_PATH="--image-path=/mnt/home/$USER"
+    local IMAGE_PATH="--image-path=${MNT_DIR}/home/$USER"
     local FS_TYPE=""
     local CIFS_DOMAIN=""
     local CIFS_USERNAME=""
@@ -903,7 +907,7 @@ function create_user_homectl() {
         local FS_TYPE="--fs-type="$SYSTEMD_HOMED_STORAGE_LUKS_TYPE""
     fi
     if [ "$SYSTEMD_HOMED_STORAGE" == "luks" ]; then
-        local IMAGE_PATH="--image-path="/mnt/home/$USER.home""
+        local IMAGE_PATH="--image-path="${MNT_DIR}/home/$USER.home""
     fi
     if [ "$SYSTEMD_HOMED_STORAGE" == "cifs" ]; then
         local CIFS_DOMAIN="--cifs-domain="${SYSTEMD_HOMED_CIFS_DOMAIN["domain"]}""
@@ -918,15 +922,15 @@ function create_user_homectl() {
     sleep 10 # #151 avoid Operation on home <USER> failed: Transport endpoint is not conected.
     homectl create "$USER" --enforce-password-policy=no --timezone="$TZ" --language="$L" $STORAGE $IMAGE_PATH $FS_TYPE $CIFS_DOMAIN $CIFS_USERNAME $CIFS_SERVICE -G "$USER_GROUPS"
     sleep 10 # #151 avoid Operation on home <USER> failed: Transport endpoint is not conected.
-    cp -a "/var/lib/systemd/home/." "/mnt/var/lib/systemd/home/"
+    cp -a "/var/lib/systemd/home/." "${MNT_DIR}/var/lib/systemd/home/"
 }
 
 function create_user_useradd() {
     local USER=$1
     local PASSWORD=$2
     local USER_GROUPS=$3
-    arch-chroot /mnt useradd -m -G "$USER_GROUPS" -s /bin/bash $USER
-    printf "$USER_PASSWORD\n$USER_PASSWORD" | arch-chroot /mnt passwd $USER
+    arch-chroot ${MNT_DIR} useradd -m -G "$USER_GROUPS" -s /bin/bash $USER
+    printf "$USER_PASSWORD\n$USER_PASSWORD" | arch-chroot ${MNT_DIR} passwd $USER
 }
 
 function user_add_groups() {
@@ -935,12 +939,12 @@ function user_add_groups() {
     if [ "$SYSTEMD_HOMED" == "true" ]; then
         homectl update "$USER" -G "$USER_GROUPS"
     else
-        arch-chroot /mnt usermod -a -G "$USER_GROUPS" "$USER"
+        arch-chroot ${MNT_DIR} usermod -a -G "$USER_GROUPS" "$USER"
     fi
 }
 
 function user_add_groups_lightdm() {
-    arch-chroot /mnt groupadd -r "autologin"
+    arch-chroot ${MNT_DIR} groupadd -r "autologin"
     user_add_groups "$USER_NAME" "autologin"
 
     for U in ${ADDITIONAL_USERS[@]}; do
@@ -1121,21 +1125,21 @@ function kernels() {
 function mkinitcpio() {
     print_step "mkinitcpio()"
 
-    arch-chroot /mnt mkinitcpio -P
+    arch-chroot ${MNT_DIR} mkinitcpio -P
 }
 
 function network() {
     print_step "network()"
 
     pacman_install "networkmanager"
-    arch-chroot /mnt systemctl enable NetworkManager.service
+    arch-chroot ${MNT_DIR} systemctl enable NetworkManager.service
 }
 
 function virtualbox() {
     print_step "virtualbox()"
 
     pacman_install "virtualbox-guest-utils"
-    arch-chroot /mnt systemctl enable vboxservice.service
+    arch-chroot ${MNT_DIR} systemctl enable vboxservice.service
 
     local USER_GROUPS="vboxsf"
     user_add_groups "$USER_NAME" "$USER_GROUPS"
@@ -1151,7 +1155,7 @@ function vmware() {
     print_step "vmware()"
 
     pacman_install "open-vm-tools"
-    arch-chroot /mnt systemctl enable vmtoolsd.service
+    arch-chroot ${MNT_DIR} systemctl enable vmtoolsd.service
 }
 
 function bootloader() {
@@ -1223,43 +1227,43 @@ function bootloader() {
             ;;
     esac
 
-    arch-chroot /mnt systemctl set-default multi-user.target
+    arch-chroot ${MNT_DIR} systemctl set-default multi-user.target
 }
 
 function bootloader_grub() {
     pacman_install "grub dosfstools"
-    arch-chroot /mnt sed -i 's/GRUB_DEFAULT=0/GRUB_DEFAULT=saved/' /etc/default/grub
-    arch-chroot /mnt sed -i 's/#GRUB_SAVEDEFAULT="true"/GRUB_SAVEDEFAULT="true"/' /etc/default/grub
-    arch-chroot /mnt sed -i -E 's/GRUB_CMDLINE_LINUX_DEFAULT="(.*) quiet"/GRUB_CMDLINE_LINUX_DEFAULT="\1"/' /etc/default/grub
-    arch-chroot /mnt sed -i 's/GRUB_CMDLINE_LINUX=""/GRUB_CMDLINE_LINUX="'"$CMDLINE_LINUX"'"/' /etc/default/grub
-    echo "" >> /mnt/etc/default/grub
-    echo "# alis" >> /mnt/etc/default/grub
-    echo "GRUB_DISABLE_SUBMENU=y" >> /mnt/etc/default/grub
+    arch-chroot ${MNT_DIR} sed -i 's/GRUB_DEFAULT=0/GRUB_DEFAULT=saved/' /etc/default/grub
+    arch-chroot ${MNT_DIR} sed -i 's/#GRUB_SAVEDEFAULT="true"/GRUB_SAVEDEFAULT="true"/' /etc/default/grub
+    arch-chroot ${MNT_DIR} sed -i -E 's/GRUB_CMDLINE_LINUX_DEFAULT="(.*) quiet"/GRUB_CMDLINE_LINUX_DEFAULT="\1"/' /etc/default/grub
+    arch-chroot ${MNT_DIR} sed -i 's/GRUB_CMDLINE_LINUX=""/GRUB_CMDLINE_LINUX="'"$CMDLINE_LINUX"'"/' /etc/default/grub
+    echo "" >> ${MNT_DIR}/etc/default/grub
+    echo "# alis" >> ${MNT_DIR}/etc/default/grub
+    echo "GRUB_DISABLE_SUBMENU=y" >> ${MNT_DIR}/etc/default/grub
 
     if [ "$BIOS_TYPE" == "uefi" ]; then
         pacman_install "efibootmgr"
-        arch-chroot /mnt grub-install --target=x86_64-efi --bootloader-id=grub --efi-directory=$ESP_DIRECTORY --recheck
-        #arch-chroot /mnt efibootmgr --create --disk $DEVICE --part $PARTITION_BOOT_NUMBER --loader /EFI/grub/grubx64.efi --label "GRUB Boot Manager"
+        arch-chroot ${MNT_DIR} grub-install --target=x86_64-efi --bootloader-id=grub --efi-directory=$ESP_DIRECTORY --recheck
+        #arch-chroot ${MNT_DIR} efibootmgr --create --disk $DEVICE --part $PARTITION_BOOT_NUMBER --loader /EFI/grub/grubx64.efi --label "GRUB Boot Manager"
     fi
     if [ "$BIOS_TYPE" == "bios" ]; then
-        arch-chroot /mnt grub-install --target=i386-pc --recheck $DEVICE
+        arch-chroot ${MNT_DIR} grub-install --target=i386-pc --recheck $DEVICE
     fi
 
-    arch-chroot /mnt grub-mkconfig -o "$BOOT_DIRECTORY/grub/grub.cfg"
+    arch-chroot ${MNT_DIR} grub-mkconfig -o "$BOOT_DIRECTORY/grub/grub.cfg"
 
     if [ "$VIRTUALBOX" == "true" ]; then
-        echo -n "\EFI\grub\grubx64.efi" > "/mnt$ESP_DIRECTORY/startup.nsh"
+        echo -n "\EFI\grub\grubx64.efi" > "${MNT_DIR}$ESP_DIRECTORY/startup.nsh"
     fi
 }
 
 function bootloader_refind() {
     pacman_install "refind"
-    arch-chroot /mnt refind-install
+    arch-chroot ${MNT_DIR} refind-install
 
-    arch-chroot /mnt rm /boot/refind_linux.conf
-    arch-chroot /mnt sed -i 's/^timeout.*/timeout 5/' "$ESP_DIRECTORY/EFI/refind/refind.conf"
-    arch-chroot /mnt sed -i 's/^#scan_all_linux_kernels.*/scan_all_linux_kernels false/' "$ESP_DIRECTORY/EFI/refind/refind.conf"
-    #arch-chroot /mnt sed -i 's/^#default_selection "+,bzImage,vmlinuz"/default_selection "+,bzImage,vmlinuz"/' "$ESP_DIRECTORY/EFI/refind/refind.conf"
+    arch-chroot ${MNT_DIR} rm /boot/refind_linux.conf
+    arch-chroot ${MNT_DIR} sed -i 's/^timeout.*/timeout 5/' "$ESP_DIRECTORY/EFI/refind/refind.conf"
+    arch-chroot ${MNT_DIR} sed -i 's/^#scan_all_linux_kernels.*/scan_all_linux_kernels false/' "$ESP_DIRECTORY/EFI/refind/refind.conf"
+    #arch-chroot ${MNT_DIR} sed -i 's/^#default_selection "+,bzImage,vmlinuz"/default_selection "+,bzImage,vmlinuz"/' "$ESP_DIRECTORY/EFI/refind/refind.conf"
 
     local REFIND_MICROCODE=""
 
@@ -1272,7 +1276,7 @@ function bootloader_refind() {
         fi
     fi
 
-    cat <<EOT >> "/mnt$ESP_DIRECTORY/EFI/refind/refind.conf"
+    cat <<EOT >> "${MNT_DIR}$ESP_DIRECTORY/EFI/refind/refind.conf"
 # alis
 menuentry "Arch Linux" {
     volume   $PARTUUID_BOOT
@@ -1290,7 +1294,7 @@ menuentry "Arch Linux" {
 
 EOT
     if [[ $KERNELS =~ .*linux-lts.* ]]; then
-        cat <<EOT >> "/mnt$ESP_DIRECTORY/EFI/refind/refind.conf"
+        cat <<EOT >> "${MNT_DIR}$ESP_DIRECTORY/EFI/refind/refind.conf"
 menuentry "Arch Linux (lts)" {
     volume   $PARTUUID_BOOT
     loader   /vmlinuz-linux-lts
@@ -1308,7 +1312,7 @@ menuentry "Arch Linux (lts)" {
 EOT
     fi
     if [[ $KERNELS =~ .*linux-hardened.* ]]; then
-        cat <<EOT >> "/mnt$ESP_DIRECTORY/EFI/refind/refind.conf"
+        cat <<EOT >> "${MNT_DIR}$ESP_DIRECTORY/EFI/refind/refind.conf"
 menuentry "Arch Linux (hardened)" {
     volume   $PARTUUID_BOOT
     loader   /vmlinuz-linux-hardened
@@ -1326,7 +1330,7 @@ menuentry "Arch Linux (hardened)" {
 EOT
     fi
     if [[ $KERNELS =~ .*linux-zen.* ]]; then
-        cat <<EOT >> "/mnt$ESP_DIRECTORY/EFI/refind/refind.conf"
+        cat <<EOT >> "${MNT_DIR}$ESP_DIRECTORY/EFI/refind/refind.conf"
 menuentry "Arch Linux (zen)" {
     volume   $PARTUUID_BOOT
     loader   /vmlinuz-linux-zen
@@ -1345,29 +1349,29 @@ EOT
     fi
 
     if [ "$VIRTUALBOX" == "true" ]; then
-        echo -n "\EFI\refind\refind_x64.efi" > "/mnt$ESP_DIRECTORY/startup.nsh"
+        echo -n "\EFI\refind\refind_x64.efi" > "${MNT_DIR}$ESP_DIRECTORY/startup.nsh"
     fi
 }
 
 function bootloader_systemd() {
-    arch-chroot /mnt systemd-machine-id-setup
-    arch-chroot /mnt bootctl install
+    arch-chroot ${MNT_DIR} systemd-machine-id-setup
+    arch-chroot ${MNT_DIR} bootctl install
 
-    arch-chroot /mnt mkdir -p "$ESP_DIRECTORY/loader/"
-    arch-chroot /mnt mkdir -p "$ESP_DIRECTORY/loader/entries/"
+    arch-chroot ${MNT_DIR} mkdir -p "$ESP_DIRECTORY/loader/"
+    arch-chroot ${MNT_DIR} mkdir -p "$ESP_DIRECTORY/loader/entries/"
 
-    cat <<EOT > "/mnt$ESP_DIRECTORY/loader/loader.conf"
+    cat <<EOT > "${MNT_DIR}$ESP_DIRECTORY/loader/loader.conf"
 # alis
 timeout 5
 default archlinux.conf
 editor 0
 EOT
 
-    #arch-chroot /mnt systemctl enable systemd-boot-update.service
+    #arch-chroot ${MNT_DIR} systemctl enable systemd-boot-update.service
 
-    arch-chroot /mnt mkdir -p "/etc/pacman.d/hooks/"
+    arch-chroot ${MNT_DIR} mkdir -p "/etc/pacman.d/hooks/"
 
-    cat <<EOT > "/mnt/etc/pacman.d/hooks/systemd-boot.hook"
+    cat <<EOT > "${MNT_DIR}/etc/pacman.d/hooks/systemd-boot.hook"
 [Trigger]
 Type = Package
 Operation = Upgrade
@@ -1390,110 +1394,110 @@ EOT
         fi
     fi
 
-    echo "title Arch Linux" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux.conf"
-    echo "efi /vmlinuz-linux" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux.conf"
+    echo "title Arch Linux" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux.conf"
+    echo "efi /vmlinuz-linux" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux.conf"
     if [ -n "$SYSTEMD_MICROCODE" ]; then
-        echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux.conf"
+        echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux.conf"
     fi
-    echo "initrd /initramfs-linux.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux.conf"
-    echo "options initrd=initramfs-linux.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux.conf"
+    echo "initrd /initramfs-linux.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux.conf"
+    echo "options initrd=initramfs-linux.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux.conf"
 
-    echo "title Arch Linux (terminal)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
-    echo "efi /vmlinuz-linux" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
+    echo "title Arch Linux (terminal)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
+    echo "efi /vmlinuz-linux" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
     if [ -n "$SYSTEMD_MICROCODE" ]; then
-        echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
+        echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
     fi
-    echo "initrd /initramfs-linux.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
-    echo "options initrd=initramfs-linux.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
+    echo "initrd /initramfs-linux.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
+    echo "options initrd=initramfs-linux.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-terminal.conf"
 
-    echo "title Arch Linux (fallback)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
-    echo "efi /vmlinuz-linux" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
+    echo "title Arch Linux (fallback)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
+    echo "efi /vmlinuz-linux" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
     if [ -n "$SYSTEMD_MICROCODE" ]; then
-        echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
+        echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
     fi
-    echo "initrd /initramfs-linux-fallback.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
-    echo "options initrd=initramfs-linux-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
+    echo "initrd /initramfs-linux-fallback.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
+    echo "options initrd=initramfs-linux-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-fallback.conf"
 
     if [[ $KERNELS =~ .*linux-lts.* ]]; then
-        echo "title Arch Linux (lts)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
-        echo "efi /vmlinuz-linux-lts" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
+        echo "title Arch Linux (lts)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
+        echo "efi /vmlinuz-linux-lts" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
         fi
-        echo "initrd /initramfs-linux-lts.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
-        echo "options initrd=initramfs-linux-lts.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
+        echo "initrd /initramfs-linux-lts.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
+        echo "options initrd=initramfs-linux-lts.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts.conf"
 
-        echo "title Arch Linux (lts, terminal)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
-        echo "efi /vmlinuz-linux-lts" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
+        echo "title Arch Linux (lts, terminal)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
+        echo "efi /vmlinuz-linux-lts" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
         fi
-        echo "initrd /initramfs-linux-lts.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
-        echo "options initrd=initramfs-linux-lts.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
+        echo "initrd /initramfs-linux-lts.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
+        echo "options initrd=initramfs-linux-lts.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-terminal.conf"
 
-        echo "title Arch Linux (lts-fallback)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
-        echo "efi /vmlinuz-linux-lts" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
+        echo "title Arch Linux (lts-fallback)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
+        echo "efi /vmlinuz-linux-lts" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
         fi
-        echo "initrd /initramfs-linux-lts-fallback.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
-        echo "options initrd=initramfs-linux-lts-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
+        echo "initrd /initramfs-linux-lts-fallback.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
+        echo "options initrd=initramfs-linux-lts-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-lts-fallback.conf"
     fi
 
     if [[ $KERNELS =~ .*linux-hardened.* ]]; then
-        echo "title Arch Linux (hardened)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
-        echo "efi /vmlinuz-linux-hardened" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
+        echo "title Arch Linux (hardened)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
+        echo "efi /vmlinuz-linux-hardened" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
         fi
-        echo "initrd /initramfs-linux-hardened.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
-        echo "options initrd=initramfs-linux-hardened.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
+        echo "initrd /initramfs-linux-hardened.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
+        echo "options initrd=initramfs-linux-hardened.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened.conf"
 
-        echo "title Arch Linux (hardened, terminal)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
-        echo "efi /vmlinuz-linux-hardened" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
+        echo "title Arch Linux (hardened, terminal)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
+        echo "efi /vmlinuz-linux-hardened" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
         fi
-        echo "initrd /initramfs-linux-hardened.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
-        echo "options initrd=initramfs-linux-hardened.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
+        echo "initrd /initramfs-linux-hardened.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
+        echo "options initrd=initramfs-linux-hardened.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-terminal.conf"
 
-        echo "title Arch Linux (hardened-fallback)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
-        echo "efi /vmlinuz-linux-hardened" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
+        echo "title Arch Linux (hardened-fallback)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
+        echo "efi /vmlinuz-linux-hardened" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
         fi
-        echo "initrd /initramfs-linux-hardened-fallback.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
-        echo "options initrd=initramfs-linux-hardened-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
+        echo "initrd /initramfs-linux-hardened-fallback.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
+        echo "options initrd=initramfs-linux-hardened-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-hardened-fallback.conf"
     fi
 
     if [[ $KERNELS =~ .*linux-zen.* ]]; then
-        echo "title Arch Linux (zen)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
-        echo "efi /vmlinuz-linux-zen" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
+        echo "title Arch Linux (zen)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
+        echo "efi /vmlinuz-linux-zen" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
         fi
-        echo "initrd /initramfs-linux-zen.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
-        echo "options initrd=initramfs-linux-zen.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
+        echo "initrd /initramfs-linux-zen.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
+        echo "options initrd=initramfs-linux-zen.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen.conf"
 
-        echo "title Arch Linux (zen, terminal)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
-        echo "efi /vmlinuz-linux-zen" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
+        echo "title Arch Linux (zen, terminal)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
+        echo "efi /vmlinuz-linux-zen" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
         fi
-        echo "initrd /initramfs-linux-zen.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
-        echo "options initrd=initramfs-linux-zen.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
+        echo "initrd /initramfs-linux-zen.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
+        echo "options initrd=initramfs-linux-zen.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX systemd.unit=multi-user.target" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-terminal.conf"
 
-        echo "title Arch Linux (zen-fallback)" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
-        echo "efi /vmlinuz-linux-zen" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
+        echo "title Arch Linux (zen-fallback)" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
+        echo "efi /vmlinuz-linux-zen" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
         if [ -n "$SYSTEMD_MICROCODE" ]; then
-            echo "initrd $SYSTEMD_MICROCODE" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
+            echo "initrd $SYSTEMD_MICROCODE" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
         fi
-        echo "initrd /initramfs-linux-zen-fallback.img" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
-        echo "options initrd=initramfs-linux-zen-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "/mnt$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
+        echo "initrd /initramfs-linux-zen-fallback.img" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
+        echo "options initrd=initramfs-linux-zen-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX" >> "${MNT_DIR}$ESP_DIRECTORY/loader/entries/archlinux-zen-fallback.conf"
     fi
 
     if [ "$VIRTUALBOX" == "true" ]; then
-        echo -n "\EFI\systemd\systemd-bootx64.efi" > "/mnt$ESP_DIRECTORY/startup.nsh"
+        echo -n "\EFI\systemd\systemd-bootx64.efi" > "${MNT_DIR}$ESP_DIRECTORY/startup.nsh"
     fi
 }
 
@@ -1535,7 +1539,7 @@ function custom_shell_user() {
     if [ "$SYSTEMD_HOMED" == "true" -a "$USER" != "root" ]; then
         homectl update --shell=$CUSTOM_SHELL_PATH $USER
     else
-        arch-chroot /mnt chsh -s $CUSTOM_SHELL_PATH $USER
+        arch-chroot ${MNT_DIR} chsh -s $CUSTOM_SHELL_PATH $USER
     fi
 }
 
@@ -1593,100 +1597,169 @@ function desktop_environment() {
             ;;
     esac
 
-    arch-chroot /mnt systemctl set-default graphical.target
+    arch-chroot ${MNT_DIR} systemctl set-default graphical.target
 }
 
 function desktop_environment_gnome() {
     pacman_install "gnome"
-    arch-chroot /mnt systemctl enable gdm.service
 }
 
 function desktop_environment_kde() {
     pacman_install "plasma-meta plasma-wayland-session packagekit-qt5 kde-system-meta kde-utilities-meta kde-graphics-meta kde-multimedia-meta kde-network-meta"
-    arch-chroot /mnt systemctl enable sddm.service
 }
 
 function desktop_environment_xfce() {
-    pacman_install "xfce4 xfce4-goodies lightdm lightdm-gtk-greeter xorg-server pavucontrol pulseaudio"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "xfce4 xfce4-goodies xorg-server pavucontrol pulseaudio"
 }
 
 function desktop_environment_mate() {
-    pacman_install "mate mate-extra lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "mate mate-extra xorg-server"
 }
 
 function desktop_environment_cinnamon() {
-    pacman_install "cinnamon gnome-terminal lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "cinnamon gnome-terminal xorg-server"
 }
 
 function desktop_environment_lxde() {
-    pacman_install "lxde lxdm"
-    arch-chroot /mnt systemctl enable lxdm.service
+    pacman_install "lxde"
 }
 
 function desktop_environment_i3_wm() {
-    pacman_install "i3-wm i3blocks i3lock i3status dmenu rxvt-unicode lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "i3-wm i3blocks i3lock i3status dmenu rxvt-unicode xorg-server"
 }
 
 function desktop_environment_i3_gaps() {
-    pacman_install "i3-gaps i3blocks i3lock i3status dmenu rxvt-unicode lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "i3-gaps i3blocks i3lock i3status dmenu rxvt-unicode xorg-server"
 }
 
 function desktop_environment_deepin() {
     pacman_install "deepin deepin-extra deepin-kwin xorg xorg-server"
-    arch-chroot /mnt sed -i 's/^#greeter-session=.*/greeter-session=lightdm-deepin-greeter/' /etc/lightdm/lightdm.conf
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
 }
 
 function desktop_environment_budgie() {
     pacman_install "budgie-desktop budgie-desktop-view budgie-screensaver gnome-control-center network-manager-applet gnome"
-    arch-chroot /mnt systemctl enable gdm.service
 }
 
 function desktop_environment_bspwm() {
-    pacman_install "bspwm lightdm lightdm-gtk-greeter"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "bspwm"
 }
 
 function desktop_environment_awesome() {
-    pacman_install "awesome vicious xterm lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "awesome vicious xterm xorg-server"
 }
 
 function desktop_environment_qtile() {
-    pacman_install "qtile xterm lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "qtile xterm xorg-server"
 }
 
 function desktop_environment_openbox() {
-    pacman_install "openbox obconf xterm lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    pacman_install "openbox obconf xterm xorg-server"
 }
 
 function desktop_environment_leftwm() {
-    aur_install "leftwm-git leftwm-theme-git dmenu xterm lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
-    user_add_groups_lightdm
+    aur_install "leftwm-git leftwm-theme-git dmenu xterm xorg-server"
 }
 
 function desktop_environment_dusk() {
-    aur_install "dusk-git dmenu xterm lightdm lightdm-gtk-greeter xorg-server"
-    arch-chroot /mnt systemctl enable lightdm.service
+    aur_install "dusk-git dmenu xterm xorg-server"
+}
+
+function display_manager() {
+    print_step "display_manager()"
+
+    if [ "$DISPLAY_MANAGER" == "auto" ]; then
+        case "$DESKTOP_ENVIRONMENT" in
+            "gnome" )
+                display_manager_gdm
+                ;;
+            "kde" )
+                display_manager_sddm
+                ;;
+            "xfce" )
+                display_manager_lightdm
+                ;;
+            "mate" )
+                display_manager_lightdm
+                ;;
+            "cinnamon" )
+                display_manager_lightdm
+                ;;
+            "lxde" )
+                display_manager_lxdm
+                ;;
+            "i3-wm" )
+                display_manager_lightdm
+                ;;
+            "i3-gaps" )
+                display_manager_lightdm
+                ;;
+            "deepin" )
+                display_manager_lightdm
+                ;;
+            "budgie" )
+                display_manager_gdm
+                ;;
+            "bspwm" )
+                display_manager_lightdm
+                ;;
+            "awesome" )
+                display_manager_lightdm
+                ;;
+            "qtile" )
+                display_manager_lightdm
+                ;;
+            "openbox" )
+                display_manager_lightdm
+                ;;
+            "leftwm" )
+                display_manager_lightdm
+                ;;
+            "dusk" )
+                display_manager_lightdm
+                ;;
+        esac
+    else
+        case "$DISPLAY_MANAGER" in
+            "gdm" )
+                display_manager_gdm
+                ;;
+            "sddm" )
+                display_manager_sddm
+                ;;
+            "lightdm" )
+                display_manager_lightdm
+                ;;
+            "lxdm" )
+                display_manager_lxdm
+                ;;
+        esac
+    fi
+}
+
+function display_manager_gdm() {
+    pacman_install "gdm"
+    arch-chroot ${MNT_DIR} systemctl enable gdm.service
+}
+
+function display_manager_sddm() {
+    pacman_install "sddm"
+    arch-chroot ${MNT_DIR} systemctl enable sddm.service
+}
+
+function display_manager_lightdm() {
+    pacman_install "lightdm lightdm-gtk-greeter"
+    arch-chroot ${MNT_DIR} systemctl enable lightdm.service
     user_add_groups_lightdm
+
+    if [ "$DESKTOP_ENVIRONMENT" == "deepin" ]; then
+        arch-chroot ${MNT_DIR} sed -i 's/^#greeter-session=.*/greeter-session=lightdm-deepin-greeter/' /etc/lightdm/lightdm.conf
+        arch-chroot ${MNT_DIR} systemctl enable lightdm.service
+    fi
+}
+
+function display_manager_lxdm() {
+    pacman_install "lxdm"
+    arch-chroot ${MNT_DIR} systemctl enable lxdm.service
 }
 
 function packages() {
@@ -1697,6 +1770,7 @@ function packages() {
         USER_PASSWORD="$USER_PASSWORD" \
         PACKAGES_PIPEWIRE="$PACKAGES_PIPEWIRE" \
         COMMOMS_LOADED="$COMMOMS_LOADED" \
+        MNT_DIR="$MNT_DIR" \
             ./alis-packages.sh
         if [ "$?" != "0" ]; then
             exit 1
@@ -1707,15 +1781,15 @@ function packages() {
 function provision() {
     print_step "provision()"
 
-    (cd "$PROVISION_DIRECTORY" && cp -vr --parents . /mnt)
+    (cd "$PROVISION_DIRECTORY" && cp -vr --parents . ${MNT_DIR})
 }
 
 function vagrant() {
     pacman_install "openssh"
     create_user "vagrant" "vagrant"
-    arch-chroot /mnt systemctl enable sshd.service
-    arch-chroot /mnt ssh-keygen -A
-    arch-chroot /mnt sshd -t
+    arch-chroot ${MNT_DIR} systemctl enable sshd.service
+    arch-chroot ${MNT_DIR} ssh-keygen -A
+    arch-chroot ${MNT_DIR} sshd -t
 }
 
 function end() {
@@ -1780,9 +1854,9 @@ function copy_logs() {
 
     if [ -f "$ALIS_CONF_FILE" ]; then
         local SOURCE_FILE="$ALIS_CONF_FILE"
-        local FILE="/mnt/var/log/alis/$ALIS_CONF_FILE"
+        local FILE="${MNT_DIR}/var/log/alis/$ALIS_CONF_FILE"
 
-        mkdir -p /mnt/var/log/alis
+        mkdir -p ${MNT_DIR}/var/log/alis
         cp "$SOURCE_FILE" "$FILE"
         chown root:root "$FILE"
         chmod 600 "$FILE"
@@ -1798,9 +1872,9 @@ function copy_logs() {
     fi
     if [ -f "$ALIS_LOG_FILE" ]; then
         local SOURCE_FILE="$ALIS_LOG_FILE"
-        local FILE="/mnt/var/log/alis/$ALIS_LOG_FILE"
+        local FILE="${MNT_DIR}/var/log/alis/$ALIS_LOG_FILE"
 
-        mkdir -p /mnt/var/log/alis
+        mkdir -p ${MNT_DIR}/var/log/alis
         cp "$SOURCE_FILE" "$FILE"
         chown root:root "$FILE"
         chmod 600 "$FILE"
@@ -1816,9 +1890,9 @@ function copy_logs() {
     fi
     if [ -f "$ALIS_ASCIINEMA_FILE" ]; then
         local SOURCE_FILE="$ALIS_ASCIINEMA_FILE"
-        local FILE="/mnt/var/log/alis/$ALIS_ASCIINEMA_FILE"
+        local FILE="${MNT_DIR}/var/log/alis/$ALIS_ASCIINEMA_FILE"
 
-        mkdir -p /mnt/var/log/alis
+        mkdir -p ${MNT_DIR}/var/log/alis
         cp "$SOURCE_FILE" "$FILE"
         chown root:root "$FILE"
         chmod 600 "$FILE"
@@ -1876,6 +1950,7 @@ function main() {
     fi
     if [ -n "$DESKTOP_ENVIRONMENT" ]; then
         execute_step "desktop_environment"
+        execute_step "display_manager"
     fi
     execute_step "packages"
     if [ "$PROVISION" == "true" ]; then
