@@ -2,7 +2,7 @@
 echo "################################################################"
 echo "Do you want to get the last github code in? - Internet required"
 echo "It will overwrite anything you may have changed"
-echo 
+echo
 echo "Answer with y/Y or n/N"
 echo "################################################################"
 echo
