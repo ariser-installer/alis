@@ -579,9 +579,7 @@ function partition() {
     if [ -n "$SWAP_SIZE" ]; then
         if [ "$FILE_SYSTEM_TYPE" == "btrfs" ]; then
             SWAPFILE="${BTRFS_SUBVOLUME_SWAP[2]}${SWAPFILE}"
-            truncate -s 0 ${MNT_DIR}${SWAPFILE}
-            chattr +C ${MNT_DIR}${SWAPFILE}
-            btrfs property set ${MNT_DIR}${SWAPFILE} compression none
+            chattr +C ${MNT_DIR}
         fi
 
         dd if=/dev/zero of=${MNT_DIR}${SWAPFILE} bs=1M count=$SWAP_SIZE status=progress
