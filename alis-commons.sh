@@ -267,10 +267,10 @@ function systemd_units() {
         local UNIT=${U}
         if [[ $UNIT == -* ]]; then
             local ACTION="disable"
-            local UNIT=${UNIT//^-/}
+            local UNIT=$(echo "$UNIT" | sed "s/^-//g")
         elif [[ $UNIT == +* ]]; then
             local ACTION="enable"
-            local UNIT=${UNIT//^+/}
+            local UNIT=$(echo "$UNIT" | sed "s/^+//g")
         elif [[ $UNIT =~ ^[a-zA-Z0-9]+ ]]; then
             local ACTION="enable"
             local UNIT=$UNIT
@@ -458,5 +458,21 @@ function partition_mount() {
             mkdir -p "${MNT_DIR}${PARTITION_MOUNT_POINT[1]}"
             mount -o "$PARTITION_OPTIONS" "${PARTITION_DEVICE}" "${MNT_DIR}${PARTITION_MOUNT_POINT[1]}"
         done
+    fi
+}
+
+function ask_password() {
+    PASSWORD_NAME="$1"
+    PASSWORD_VARIABLE="$2"
+    read -r -sp "Type ${PASSWORD_NAME} password: " PASSWORD1
+    echo ""
+    read -r -sp "Retype ${PASSWORD_NAME} password: " PASSWORD2
+    echo ""
+    if [[ "$PASSWORD1" == "$PASSWORD2" ]]; then
+        declare -n VARIABLE="${PASSWORD_VARIABLE}"
+        VARIABLE="$PASSWORD1"
+    else
+        echo "${PASSWORD_NAME} password don't match. Please, type again."
+        ask_password "${PASSWORD_NAME}" "${PASSWORD_VARIABLE}"
     fi
 }

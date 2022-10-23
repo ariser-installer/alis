@@ -358,63 +358,19 @@ function prepare_partition() {
 
 function ask_passwords() {
     if [ "$LUKS_PASSWORD" == "ask" ]; then
-        local PASSWORD_TYPED="false"
-        while [ "$PASSWORD_TYPED" != "true" ]; do
-            read -r -sp 'Type LUKS password: ' LUKS_PASSWORD
-            echo ""
-            read -r -sp 'Retype LUKS password: ' LUKS_PASSWORD_RETYPE
-            echo ""
-            if [ "$LUKS_PASSWORD" == "$LUKS_PASSWORD_RETYPE" ]; then
-                local PASSWORD_TYPED="true"
-            else
-                echo "LUKS password don't match. Please, type again."
-            fi
-        done
+        ask_password "LUKS" "LUKS_PASSWORD"
     fi
 
     if [ -n "$WIFI_INTERFACE" ] && [ "$WIFI_KEY" == "ask" ]; then
-        local PASSWORD_TYPED="false"
-        while [ "$PASSWORD_TYPED" != "true" ]; do
-            read -r -sp 'Type WIFI key: ' WIFI_KEY
-            echo ""
-            read -r -sp 'Retype WIFI key: ' WIFI_KEY_RETYPE
-            echo ""
-            if [ "$WIFI_KEY" == "$WIFI_KEY_RETYPE" ]; then
-                local PASSWORD_TYPED="true"
-            else
-                echo "WIFI key don't match. Please, type again."
-            fi
-        done
+        ask_password "WIFI" "WIFI_KEY"
     fi
 
     if [ "$ROOT_PASSWORD" == "ask" ]; then
-        local PASSWORD_TYPED="false"
-        while [ "$PASSWORD_TYPED" != "true" ]; do
-            read -r -sp 'Type root password: ' ROOT_PASSWORD
-            echo ""
-            read -r -sp 'Retype root password: ' ROOT_PASSWORD_RETYPE
-            echo ""
-            if [ "$ROOT_PASSWORD" == "$ROOT_PASSWORD_RETYPE" ]; then
-                local PASSWORD_TYPED="true"
-            else
-                echo "Root password don't match. Please, type again."
-            fi
-        done
+        ask_password "root" "ROOT_PASSWORD"
     fi
 
     if [ "$USER_PASSWORD" == "ask" ]; then
-        local PASSWORD_TYPED="false"
-        while [ "$PASSWORD_TYPED" != "true" ]; do
-            read -r -sp 'Type user password: ' USER_PASSWORD
-            echo ""
-            read -r -sp 'Retype user password: ' USER_PASSWORD_RETYPE
-            echo ""
-            if [ "$USER_PASSWORD" == "$USER_PASSWORD_RETYPE" ]; then
-                local PASSWORD_TYPED="true"
-            else
-                echo "User password don't match. Please, type again."
-            fi
-        done
+        ask_password "user" "USER_PASSWORD"
     fi
 
     for I in "${!ADDITIONAL_USERS[@]}"; do
@@ -478,7 +434,7 @@ function partition() {
     # luks and lvm
     if [ -n "$LUKS_PASSWORD" ]; then
         echo -n "$LUKS_PASSWORD" | cryptsetup --key-size=512 --key-file=- luksFormat --type luks2 "$PARTITION_ROOT"
-        echo -n "$LUKS_PASSWORD" | cryptsetup --key-file=- open "$PARTITION_ROOT $LUKS_DEVICE_NAME"
+        echo -n "$LUKS_PASSWORD" | cryptsetup --key-file=- open "$PARTITION_ROOT" "$LUKS_DEVICE_NAME"
         sleep 5
     fi
 
@@ -516,44 +472,46 @@ function partition() {
     fi
 
     # format
-    # Delete patition filesystem in case is reinstalling in an already existing system
-    # Not fail on error
-    wipefs -a -f "$PARTITION_BOOT" || true
-    wipefs -a -f "$DEVICE_ROOT" || true
+    if [ "$PARTITION_MODE" != "manual" ]; then
+        # Delete patition filesystem in case is reinstalling in an already existing system
+        # Not fail on error
+        wipefs -a -f "$PARTITION_BOOT" || true
+        wipefs -a -f "$DEVICE_ROOT" || true
 
-    ## boot
-    if [ "$BIOS_TYPE" == "uefi" ]; then
-        mkfs.fat -n ESP -F32 "$PARTITION_BOOT"
-    fi
-    if [ "$BIOS_TYPE" == "bios" ]; then
-        mkfs.ext4 -L boot "$PARTITION_BOOT"
-    fi
-    ## root
-    if [ "$FILE_SYSTEM_TYPE" == "reiserfs" ]; then
-        mkfs."$FILE_SYSTEM_TYPE" -f -l root "$DEVICE_ROOT"
-    elif [ "$FILE_SYSTEM_TYPE" == "f2fs" ]; then
-        mkfs."$FILE_SYSTEM_TYPE" -l root "$DEVICE_ROOT"
-    else
-        mkfs."$FILE_SYSTEM_TYPE" -L root "$DEVICE_ROOT"
-    fi
-    ## mountpoint
-    for I in "${PARTITION_MOUNT_POINTS[@]}"; do
-        if [[ "$I" =~ ^!.* ]]; then
-            continue
+        ## boot
+        if [ "$BIOS_TYPE" == "uefi" ]; then
+            mkfs.fat -n ESP -F32 "$PARTITION_BOOT"
         fi
-        IFS='=' read -ra PARTITION_MOUNT_POINT <<< "$I"
-        if [ "${PARTITION_MOUNT_POINT[1]}" == "/boot" ] || [ "${PARTITION_MOUNT_POINT[1]}" == "/" ]; then
-            continue
+        if [ "$BIOS_TYPE" == "bios" ]; then
+            mkfs.ext4 -L boot "$PARTITION_BOOT"
         fi
-        local PARTITION_DEVICE="$(partition_device "$DEVICE" "${PARTITION_MOUNT_POINT[0]}")"
+        ## root
         if [ "$FILE_SYSTEM_TYPE" == "reiserfs" ]; then
-            mkfs."$FILE_SYSTEM_TYPE" -f "$PARTITION_DEVICE"
+            mkfs."$FILE_SYSTEM_TYPE" -f -l root "$DEVICE_ROOT"
         elif [ "$FILE_SYSTEM_TYPE" == "f2fs" ]; then
-            mkfs."$FILE_SYSTEM_TYPE" "$PARTITION_DEVICE"
+            mkfs."$FILE_SYSTEM_TYPE" -l root "$DEVICE_ROOT"
         else
-            mkfs."$FILE_SYSTEM_TYPE" "$PARTITION_DEVICE"
+            mkfs."$FILE_SYSTEM_TYPE" -L root "$DEVICE_ROOT"
         fi
-    done
+        ## mountpoint
+        for I in "${PARTITION_MOUNT_POINTS[@]}"; do
+            if [[ "$I" =~ ^!.* ]]; then
+                continue
+            fi
+            IFS='=' read -ra PARTITION_MOUNT_POINT <<< "$I"
+            if [ "${PARTITION_MOUNT_POINT[1]}" == "/boot" ] || [ "${PARTITION_MOUNT_POINT[1]}" == "/" ]; then
+                continue
+            fi
+            local PARTITION_DEVICE="$(partition_device "$DEVICE" "${PARTITION_MOUNT_POINT[0]}")"
+            if [ "$FILE_SYSTEM_TYPE" == "reiserfs" ]; then
+                mkfs."$FILE_SYSTEM_TYPE" -f "$PARTITION_DEVICE"
+            elif [ "$FILE_SYSTEM_TYPE" == "f2fs" ]; then
+                mkfs."$FILE_SYSTEM_TYPE" "$PARTITION_DEVICE"
+            else
+                mkfs."$FILE_SYSTEM_TYPE" "$PARTITION_DEVICE"
+            fi
+        done
+    fi
 
     # options
     partition_options
@@ -1384,9 +1342,9 @@ Operation = Upgrade
 Target = systemd
 
 [Action]
-Description = Updating systemd-boot
+Description = Updating systemd-boot...
 When = PostTransaction
-Exec = /usr/bin/bootctl update
+Exec = /usr/bin/systemctl restart systemd-boot-update.service
 EOT
 
     local SYSTEMD_MICROCODE=""
