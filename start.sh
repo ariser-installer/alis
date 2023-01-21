@@ -26,8 +26,17 @@ echo
 chmod +x *.sh
 chmod +x /alis/configs/*.sh
 chmod +x /alis/configz/*.sh
+echo
 echo "################################################################"
-echo "Starting alis.sh"
+echo "Shall we start the alis script"
 echo "################################################################"
 echo
-./alis.sh -w
+read response
+if [[ "$response" == [yY] ]]; then
+    /alis/alis.sh -w
+else
+    echo "################################################################"
+    echo "We did not start the alis script"
+    echo "################################################################"
+fi
+
