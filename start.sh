@@ -24,7 +24,7 @@ echo "Making all .sh files executable"
 echo "################################################################"
 echo
 chmod +x *.sh
-chmod +x configs/*.sh
+chmod +x /alis/configs/*.sh
 echo "################################################################"
 echo "Starting alis.sh"
 echo "################################################################"
