@@ -136,6 +136,8 @@ function facts_commons() {
         CPU_VENDOR="intel"
     elif lscpu | grep -q "AuthenticAMD"; then
         CPU_VENDOR="amd"
+    else
+        CPU_VENDOR=""
     fi
 
     if lspci -nn | grep "\[03" | grep -qi "intel"; then
@@ -146,23 +148,30 @@ function facts_commons() {
         GPU_VENDOR="nvidia"
     elif lspci -nn | grep "\[03" | grep -qi "vmware"; then
         GPU_VENDOR="vmware"
+    else
+        GPU_VENDOR=""
     fi
 
     if systemd-detect-virt | grep -qi "oracle"; then
         VIRTUALBOX="true"
+    else
+        VIRTUALBOX="false"
     fi
 
     if systemd-detect-virt | grep -qi "vmware"; then
         VMWARE="true"
+    else
+        VMWARE="false"
     fi
 
-    # if [ "$VIRTUALBOX" != "true" ] && [ "$VMWARE" != "true" ]; then
-    #     if [ "$CPU_VENDOR" == "intel" ]; then
-    #         INITRD_MICROCODE="intel-ucode.img"
-    #     else
-    #         INITRD_MICROCODE="amd-ucode.img"
-    #     fi
-    # fi
+    INITRD_MICROCODE=""
+    if [ "$VIRTUALBOX" != "true" ] && [ "$VMWARE" != "true" ]; then
+        if [ "$CPU_VENDOR" == "intel" ]; then
+            INITRD_MICROCODE="intel-ucode.img"
+        elif [ "$CPU_VENDOR" == "amd" ]; then
+            INITRD_MICROCODE="amd-ucode.img"
+        fi
+    fi
 
     USER_NAME_INSTALL="$(whoami)"
     if [ "$USER_NAME_INSTALL" == "root" ]; then
