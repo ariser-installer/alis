@@ -538,11 +538,13 @@ function partition() {
         if [ "$FILE_SYSTEM_TYPE" == "btrfs" ]; then
             SWAPFILE="${BTRFS_SUBVOLUME_SWAP[2]}$SWAPFILE"
             chattr +C "${MNT_DIR}"
+            btrfs filesystem mkswapfile --size "${SWAP_SIZE}m" --uuid clear "${MNT_DIR}${SWAPFILE}"
+            swapon "${MNT_DIR}${SWAPFILE}"
+        else
+            dd if=/dev/zero of="${MNT_DIR}$SWAPFILE" bs=1M count="$SWAP_SIZE" status=progress
+            chmod 600 "${MNT_DIR}${SWAPFILE}"
+            mkswap "${MNT_DIR}${SWAPFILE}"
         fi
-
-        dd if=/dev/zero of="${MNT_DIR}$SWAPFILE" bs=1M count="$SWAP_SIZE" status=progress
-        chmod 600 "${MNT_DIR}${SWAPFILE}"
-        mkswap "${MNT_DIR}${SWAPFILE}"
     fi
 
     # set variables
@@ -627,14 +629,20 @@ EOT
 function configuration() {
     print_step "configuration()"
 
-    genfstab -U "${MNT_DIR}" >> "${MNT_DIR}"/etc/fstab
+    genfstab -U "${MNT_DIR}" >> "${MNT_DIR}/etc/fstab"
+
+    cat <<EOT >> "${MNT_DIR}/etc/fstab"
+# efivars
+efivarfs /sys/firmware/efi/efivars efivarfs ro,nosuid,nodev,noexec 0 0
+
+EOT
 
     if [ -n "$SWAP_SIZE" ]; then
-        {
-            echo "# swap"
-            echo "$SWAPFILE none swap defaults 0 0"
-            echo ""
-        }>> "${MNT_DIR}"/etc/fstab
+        cat <<EOT >> "${MNT_DIR}/etc/fstab"
+# swap
+$SWAPFILE none swap defaults 0 0
+
+EOT
     fi
 
     if [ "$DEVICE_TRIM" == "true" ]; then
@@ -1341,7 +1349,7 @@ title Arch Linux ($KERNEL)
 efi /vmlinuz-linux
 $MICROCODE
 initrd /initramfs-$KERNEL.img
-options initrd=initramfs-$KERNEL.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX"
+options initrd=initramfs-$KERNEL.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX
 EOT
 
     cat <<EOT >> "${MNT_DIR}${ESP_DIRECTORY}/loader/entries/arch-$KERNEL-terminal.conf"
@@ -1349,7 +1357,7 @@ title Arch Linux ($KERNEL, terminal)
 efi /vmlinuz-linux
 $MICROCODE
 initrd /initramfs-$KERNEL-terminal.img
-options initrd=initramfs-$KERNEL-terminal.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX"
+options initrd=initramfs-$KERNEL-terminal.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX
 EOT
 
     cat <<EOT >> "${MNT_DIR}${ESP_DIRECTORY}/loader/entries/arch-$KERNEL-fallback.conf"
@@ -1357,7 +1365,7 @@ title Arch Linux ($KERNEL, fallback)
 efi /vmlinuz-linux
 $MICROCODE
 initrd /initramfs-$KERNEL-fallback.img
-options initrd=initramfs-$KERNEL-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX"
+options initrd=initramfs-$KERNEL-fallback.img $CMDLINE_LINUX_ROOT rw $CMDLINE_LINUX
 EOT
 }
 
