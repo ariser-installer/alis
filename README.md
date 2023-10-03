@@ -53,7 +53,7 @@ For new features, improvements and bugs, fill an issue in GitHub or make a pull 
 * Allow to customize the installation to cover the most common cases
 * Provide support for system recovery
 * Provide support for installation log
-* Use same configuration default values
+* Use sane configuration default values
 
 ## Features
 
@@ -62,7 +62,7 @@ For new features, improvements and bugs, fill an issue in GitHub or make a pull 
 * **Encryption**: root partition encrypted and no encrypted
 * **Partition**: no LVM, LVM, LVM on LUKS, GPT on UEFI, MBR on BIOS, custom partition scheme and mountpoints
 * **File system**: ext4, btrfs (with subvols), xfs, f2fs, reiserfs
-* **Kernels**: linux, linux-lts, linux-hardened, linux-zen
+* **Kernels**: linux, linux-lts, linux-hardened, linux-zen. Supports Unified Kernel Image (UKI).
 * **Desktop environment**: GNOME, KDE, XFCE, Mate, Cinnamon, LXDE, i3-wm, i3-gaps, Deepin, Budgie, Bspwm, Awesome, Qtile, Openbox, Leftwm, Dusk
 * **Display managers**: GDM, SDDM, Lightdm, lxdm
 * **Graphics controller**: intel, nvidia and amd with optionally early KMS start. With intel optionally fastboot, hardware video acceleration and framebuffer compression.
@@ -77,6 +77,7 @@ For new features, improvements and bugs, fill an issue in GitHub or make a pull 
 * **Users creation** and **add to sudoers**
 * **systemd units enable or disable**
 * **systemd-homed** support
+* **systemd GPT partition automounting** support
 * **PipeWire** support
 * **Multilib** support
 * **Files provision** support
@@ -229,6 +230,7 @@ Also, if you prefer to install an Arch Linux using a guided graphical installer 
 * [ArcoLinux](https://arcolinux.com/)
 * [Manjaro](https://manjaro.org/)
 * [EndeavourOS](https://endeavouros.com/)
+* [GarudaLinux](https://garudalinux.org/)
 * [Archlabs](https://archlabslinux.com/)
 * [RebornOS](https://rebornos.org/)
 * [BlackArch](https://blackarch.org/)
@@ -326,6 +328,7 @@ https://www.archlinux.org/download/
 * https://wiki.archlinux.org/title/Solid_State_Drives
 * https://wiki.archlinux.org/title/Swap
 * https://wiki.archlinux.org/title/Systemd
+* https://wiki.archlinux.org/title/Systemd#GPT_partition_automounting
 * https://wiki.archlinux.org/title/Systemd-boot
 * https://wiki.archlinux.org/title/Systemd-homed
 * https://wiki.archlinux.org/title/Unified_Extensible_Firmware_Interface
