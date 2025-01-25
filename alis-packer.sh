@@ -6,7 +6,8 @@ set -eu
 # Copyright (C) 2022 picodotdev
 
 # Display the message
-echo -e "\nInstall packer and virtualbox before continuing"
+echo -e "\nInstall packer, virtualbox, ... before continuing"
+echo -e "\nRun install-packer-extras.sh first"
 echo "(Press any key to continue)"
 
 # Wait for the user to press any key
