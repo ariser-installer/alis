@@ -1724,7 +1724,7 @@ function provision() {
 
 function vagrant() {
     pacman_install "openssh"
-    create_user "vagrant" "vagrant"
+    create_user "vagrant" "vagrant" "vagrant"
     arch-chroot "${MNT_DIR}" systemctl enable sshd.service
     arch-chroot "${MNT_DIR}" ssh-keygen -A
     arch-chroot "${MNT_DIR}" sshd -t
