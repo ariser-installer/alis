@@ -15,6 +15,6 @@ sed -i "s/^BOOTLOADER=.*/BOOTLOADER=\"systemd\"/" ./alis.conf
 sed -i "s/^DESKTOP_ENVIRONMENT=.*/DESKTOP_ENVIRONMENT=\"mate\"/" ./alis.conf
 sed -i "s/PACKAGES_INSTALL=.*/PACKAGES_INSTALL=\"true\"/" ./alis.conf
 sed -i "s/^PACKAGES_AUR_INSTALL=.*/PACKAGES_AUR_INSTALL=\"true\"/" ./alis-packages.conf
-sed -i "s/^PACKAGES_AUR_COMMAND=.*/PACKAGES_AUR_COMMAND=\"paru-bun\"/" ./alis-packages.conf
-sed -i "s/^PACKAGES_AUR_OTHERS=.*/PACKAGES_AUR_OTHERS=\"gnucash\"/" ./alis-packages.conf
+sed -i "s/^PACKAGES_AUR_COMMAND=.*/PACKAGES_AUR_COMMAND=\"paru-bin\"/" ./alis-packages.conf
+sed -i "s/^PACKAGES_AUR_OTHERS=.*/PACKAGES_AUR_OTHERS=\"fastfetch\"/" ./alis-packages.conf
 
