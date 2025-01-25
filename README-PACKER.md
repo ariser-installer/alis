@@ -39,15 +39,7 @@ $ install-packer-extras.sh on real metal!
 ```
 
 ```
-$ packer plugins install github.com/hashicorp/virtualbox
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-systemd.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-systemd-gnome.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-luks-lvm-grub.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-btrfs-luks-lvm-systemd.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-f2fs-luks-lvm-systemd.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-grub-gnome.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-grub-kde.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-grub-xfce.sh
+$ ./alis-packer.sh
 ```
 
 ## Arch Linux Installation Media
