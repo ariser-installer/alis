@@ -242,7 +242,7 @@ Also and recommended for new Arch Linux newcomers to follow the Arch Way of doin
 
 ## Create VirtualBox images with Packer
 
-VirtualBox and [Packer](https://packer.io/) are required on the hostmachine.
+VirtualBox and packer - (https://packer.io/) are required on the hostmachine. Install them
 
 * Firmware: efi, bios
 * File system: ext4, btrfs, f2fs, xfs

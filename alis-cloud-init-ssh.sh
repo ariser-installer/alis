@@ -6,7 +6,7 @@ set -eu
 GITHUB_USER="picodotdev"
 BRANCH="main"
 BRANCH_QUALIFIER=""
-IP_ADDRESS="10.0.2.15"
+IP_ADDRESS=""
 VM_TYPE="virtualbox"
 VM_NAME="Arch Linux"
 CONFIG_FILE_SH="alis-config-efi-ext4-systemd.sh"
