@@ -28,10 +28,6 @@
 # stash or commit
 # git reset --hard
 
-# checking if I have the latest files from github
-echo "Checking for newer files online first"
-git pull
-
 echo "Adding time to /etc/dev-rel"
 date_build=$(date -d now)
 echo "Iso build on : "$date_build
