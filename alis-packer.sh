@@ -5,6 +5,13 @@ set -eu
 # and customized Arch Linux system.
 # Copyright (C) 2022 picodotdev
 
+# Display the message
+echo -e "\nInstall packer and virtualbox before continuing"
+echo "(Press any key to continue)"
+
+# Wait for the user to press any key
+read -n 1 -s
+
 CONFIG_FILE="alis-packer.json"
 BRANCH="main"
 BRANCH_QUALIFIER=""
