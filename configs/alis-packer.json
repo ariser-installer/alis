@@ -31,7 +31,7 @@
         "curl -sL http://raw.githubusercontent.com/ariser-installer/alis/{{user `branch`}}/download{{user `branch_qualifier`}}.sh | bash<enter><wait1s>",
         "loadkeys en<enter><wait1>",
         "./alis-asciinema.sh<enter><wait15>",
-        "less alis.conf<enter><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s>q<wait1s>",
+        "less alis.conf<enter><wait5s><pageDown><wait5s><pageDown><wait5s><pageDown><wait5s><pageDown><wait5s><pageDown><wait5s><pageDown><wait5s>q<wait1s>",
         "./alis.sh<enter><wait1s>y<wait1s><enter>"
       ],
       "shutdown_command": "echo 'vagrant' | sudo -S systemctl poweroff",
