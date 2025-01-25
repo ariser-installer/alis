@@ -28,7 +28,7 @@
       "boot_wait": "5s",
       "boot_command": [
         "<wait3s><up><up><up><up><up><enter><wait45s>",
-        "curl -sL http://raw.githubusercontent.com/ariser-installer/alis-dev/{{user `branch`}}/download{{user `branch_qualifier`}}.sh | bash<enter><wait1s>",
+        "curl -sL http://raw.githubusercontent.com/picodotdev/alis/{{user `branch`}}/download{{user `branch_qualifier`}}.sh | bash<enter><wait1s>",
         "loadkeys en<enter><wait1>",
         "./alis-asciinema.sh<enter><wait15>",
         "less alis.conf<enter><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s><pageDown><wait2s>q<wait1s>",

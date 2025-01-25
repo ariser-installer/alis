@@ -5,6 +5,9 @@ set -eu
 # and customized Arch Linux system.
 # Copyright (C) 2022 picodotdev
 
+echo "Change line 13 into the config you want"
+echo "Install vagrant and packer"
+
 CONFIG_FILE="alis-packer.json"
 BRANCH="main"
 BRANCH_QUALIFIER=""

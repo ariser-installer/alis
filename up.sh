@@ -37,6 +37,17 @@ date_build=$(date -d now)
 echo "Iso build on : "$date_build
 sed -i "s/\(^ISO_BUILD=\).*/\1$date_build/" files/etc/dev-rel
 
+# Folder to check
+FOLDER="output-archlinux-alis-virtualbox"
+
+# Check if the folder exists
+if [ -d "$FOLDER" ]; then
+  echo "Folder '$FOLDER' exists. Removing..."
+  rm -rf "$FOLDER"
+  echo "Folder '$FOLDER' has been removed."
+else
+  echo "Folder '$FOLDER' does not exist. Nothing to remove."
+fi
 
 # Below command will backup everything inside the project folder
 git add --all .

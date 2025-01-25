@@ -16,5 +16,5 @@ pacman -Sy
 pacman -S --noconfirm asciinema
 
 clear
-asciinema rec --stdin -i 5 ~/alis.asciinema
+asciinema rec --stdin -i 10 ~/alis.asciinema
 
