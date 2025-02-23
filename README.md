@@ -240,9 +240,9 @@ Also and recommended for new Arch Linux newcomers to follow the Arch Way of doin
 
 * [The Arch Linux Handbook](https://www.freecodecamp.org/news/how-to-install-arch-linux/)
 
-## Create VirtualBox images with Packer
+## Test in VirtualBox with Packer
 
-VirtualBox and packer - (https://packer.io/) are required on the hostmachine. Install them
+VirtualBox and [Packer](https://packer.io/) are required.
 
 * Firmware: efi, bios
 * File system: ext4, btrfs, f2fs, xfs
@@ -252,14 +252,14 @@ VirtualBox and packer - (https://packer.io/) are required on the hostmachine. In
 
 ```
 $ packer plugins install github.com/hashicorp/virtualbox
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-systemd.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-systemd-gnome.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-luks-lvm-grub.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-btrfs-luks-lvm-systemd.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-f2fs-luks-lvm-systemd.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-grub-gnome.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-grub-kde.sh
-$ ./alis-packer.sh -c configs/alis-packer-efi-ext4-grub-xfce.sh
+$ ./alis-packer.sh -c alis-packer-efi-ext4-systemd.sh
+$ ./alis-packer.sh -c alis-packer-efi-ext4-systemd-gnome.sh
+$ ./alis-packer.sh -c alis-packer-efi-ext4-luks-lvm-grub.sh
+$ ./alis-packer.sh -c alis-packer-efi-btrfs-luks-lvm-systemd.sh
+$ ./alis-packer.sh -c alis-packer-efi-f2fs-luks-lvm-systemd.sh
+$ ./alis-packer.sh -c alis-packer-efi-ext4-grub-gnome.sh
+$ ./alis-packer.sh -c alis-packer-efi-ext4-grub-kde.sh
+$ ./alis-packer.sh -c alis-packer-efi-ext4-grub-xfce.sh
 ```
 
 ## Arch Linux Installation Media
